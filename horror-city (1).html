@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NIGHT SHIFT — Survive the City</title>
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; overflow:hidden; font-family:'Share Tech Mono',monospace; cursor:crosshair; }
+  canvas { display:block; }
+
+  #hud {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-between;
+    padding:12px 16px; pointer-events:none; z-index:10;
+  }
+  .panel {
+    background:rgba(0,0,0,0.85);
+    border:1px solid #1a1a1a;
+    border-radius:4px;
+    padding:10px 14px;
+    color:#ccc;
+    font-size:12px;
+    line-height:1.9;
+    box-shadow: 0 0 20px rgba(255,0,0,0.05);
+  }
+  #money-val { color:#b8860b; font-size:18px; font-weight:bold; font-family:'Creepster',cursive; letter-spacing:1px; }
+  #health-wrap { width:110px; height:6px; background:#1a1a1a; border-radius:3px; margin-top:3px; }
+  #health-bar { height:100%; background:#8b0000; border-radius:3px; transition:width 0.3s; }
+  #sanity-wrap { width:110px; height:6px; background:#1a1a1a; border-radius:3px; margin-top:3px; }
+  #sanity-bar { height:100%; background:#4b0082; border-radius:3px; transition:width 0.4s; }
+  #status-panel { max-width:220px; }
+  #status-msg { color:#cc3333; font-size:11px; line-height:1.5; }
+  #job-msg { color:#b8860b; font-size:11px; margin-top:4px; }
+  #threat-level { color:#cc3333; font-size:11px; margin-top:4px; }
+
+  #controls {
+    position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.8); color:#555; font-size:10px;
+    padding:5px 14px; border-radius:20px; pointer-events:none; z-index:10;
+    white-space:nowrap; border:1px solid #1a1a1a;
+  }
+
+  /* Overlay screens */
+  .overlay {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,0.95); z-index:30;
+    flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; text-align:center;
+  }
+  .overlay h1 { font-family:'Creepster',cursive; font-size:52px; margin-bottom:16px; letter-spacing:3px; }
+  .overlay p { color:#888; font-size:15px; margin:6px 0; }
+  .overlay button {
+    margin-top:24px; background:transparent; border:1px solid #8b0000;
+    color:#cc3333; padding:10px 30px; border-radius:4px;
+    cursor:pointer; font-family:'Share Tech Mono',monospace; font-size:13px;
+    transition:all 0.2s;
+  }
+  .overlay button:hover { background:#8b0000; color:#fff; }
+
+  #title-screen {
+    display:flex; position:fixed; inset:0; background:#000; z-index:40;
+    flex-direction:column; align-items:center; justify-content:center;
+  }
+  #title-screen h1 {
+    font-family:'Creepster',cursive; font-size:64px; color:#8b0000;
+    letter-spacing:6px; text-shadow: 0 0 40px rgba(139,0,0,0.8);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  #title-screen .sub { color:#555; font-size:13px; margin-top:8px; letter-spacing:3px; }
+  #title-screen .story {
+    color:#666; font-size:12px; max-width:420px; text-align:center;
+    margin:24px 0; line-height:1.8;
+  }
+  #start-btn {
+    background:transparent; border:1px solid #8b0000; color:#cc3333;
+    padding:12px 40px; border-radius:4px; cursor:pointer;
+    font-family:'Share Tech Mono',monospace; font-size:14px;
+    letter-spacing:2px; transition:all 0.2s;
+  }
+  #start-btn:hover { background:#8b0000; color:#fff; box-shadow:0 0 30px rgba(139,0,0,0.5); }
+
+  @keyframes pulse { 0%,100%{text-shadow:0 0 40px rgba(139,0,0,0.8)} 50%{text-shadow:0 0 80px rgba(139,0,0,1), 0 0 120px rgba(139,0,0,0.4)} }
+  @keyframes flicker { 0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:0.3} 94%{opacity:1} 97%{opacity:0.7} 98%{opacity:1} }
+
+  /* Vignette overlay */
+  #vignette {
+    position:fixed; inset:0; pointer-events:none; z-index:5;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.85) 100%);
+  }
+  /* Blood splatter on damage */
+  #blood {
+    position:fixed; inset:0; pointer-events:none; z-index:6;
+    background:rgba(139,0,0,0); transition:background 0.1s;
+  }
+  /* Sanity distortion */
+  #grain {
+    position:fixed; inset:0; pointer-events:none; z-index:4; opacity:0.03;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+</style>
+</head>
+<body>
+
+<div id="title-screen">
+  <h1>NIGHT SHIFT</h1>
+  <div class="sub">A CITY HORROR GAME</div>
+  <div class="story">
+    The city is yours — but so is the darkness.<br>
+    Earn $30,000 delivering pizza to escape in the mansion's safe room.<br>
+    He is already out there. He is already watching.<br>
+    <span style="color:#8b0000">Do not let him find you.</span>
+  </div>
+  <button id="start-btn" onclick="startGame()">BEGIN SHIFT</button>
+</div>
+
+<div id="vignette"></div>
+<div id="blood"></div>
+<div id="grain"></div>
+
+<div id="hud">
+  <div class="panel">
+    <div style="color:#666;font-size:10px;letter-spacing:2px;">EARNINGS</div>
+    <div id="money-val">$0</div>
+    <div style="color:#555;font-size:10px;margin-top:2px;">GOAL: $30,000</div>
+    <div style="margin-top:6px;color:#666;font-size:10px;">HEALTH</div>
+    <div id="health-wrap"><div id="health-bar" style="width:100%"></div></div>
+    <div style="margin-top:4px;color:#666;font-size:10px;">SANITY</div>
+    <div id="sanity-wrap"><div id="sanity-bar" style="width:100%"></div></div>
+  </div>
+  <div class="panel" id="status-panel">
+    <div id="status-msg">Find a pizza shop to start working.</div>
+    <div id="job-msg"></div>
+    <div id="threat-level"></div>
+    <div id="vehicle-status" style="color:#444;font-size:10px;margin-top:4px;">On foot</div>
+  </div>
+</div>
+
+<div id="controls">WASD — Move &nbsp;|&nbsp; E — Interact / Car &nbsp;|&nbsp; SHIFT — Sprint (loud!) &nbsp;|&nbsp; H — Hide in building</div>
+
+<!-- Death screen -->
+<div class="overlay" id="death-screen">
+  <h1 style="color:#8b0000;">YOU DIED</h1>
+  <p id="death-msg">He found you in the dark.</p>
+  <p style="color:#444;font-size:12px;margin-top:8px;">The city keeps its secrets.</p>
+  <button onclick="location.reload()">TRY AGAIN</button>
+</div>
+
+<!-- Win screen -->
+<div class="overlay" id="win-screen">
+  <h1 style="color:#b8860b;">ESCAPED</h1>
+  <p>You bought the mansion's safe room.</p>
+  <p>You locked the door.</p>
+  <p style="color:#8b0000;margin-top:12px;">You can still hear him outside.</p>
+  <button onclick="location.reload()">PLAY AGAIN</button>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────
+const WORLD = 2800;
+const ROAD_W = 90;
+const H_ROADS = [350, 700, 1050, 1400, 1750, 2100, 2450];
+const V_ROADS = [350, 700, 1050, 1400, 1750, 2100, 2450];
+const GOAL = 30000;
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let gameRunning = false;
+let cam = {x:0, y:0};
+let keys = {};
+let frameCount = 0;
+
+const player = {
+  x:1400, y:1400, w:16, h:16,
+  health:100, sanity:100, money:0,
+  inCar:null, hidden:false,
+  speed:2.8, angle:0,
+  noiseLevel:0 // how loud player is — affects killer
+};
+
+// Job system
+let currentJob = null; // {type, targetX, targetY, targetBuilding, reward, phase}
+// phase: 'pickup' = go get food, 'deliver' = take to house, 'done'
+
+// Killer
+const killer = {
+  x:200, y:200, w:18, h:18,
+  speed:1.8, awareness:0, // 0-100
+  lastHeardX:null, lastHeardY:null,
+  state:'patrol', // patrol, hunting, chasing
+  patrolTarget:{x:500,y:500},
+  visible:false
+};
+
+let buildings = [];
+let worldCars = [];
+let streetlights = [];
+let deliveryTarget = null;
+
+// ── WORLD GEN ──────────────────────────────────────────────────────────────
+function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function randF(a,b){return Math.random()*(b-a)+a;}
+
+function isOnRoad(x,y,w,h){
+  for(const r of H_ROADS) if(y<r+ROAD_W && y+h>r) return true;
+  for(const r of V_ROADS) if(x<r+ROAD_W && x+w>r) return true;
+  return false;
+}
+
+function buildingsOverlap(a,b){
+  return a.x<b.x+b.w+8 && a.x+a.w+8>b.x && a.y<b.y+b.h+8 && a.y+a.h+8>b.y;
+}
+
+function genWorld(){
+  // Place buildings in city blocks
+  const typePool = ['house','house','house','house','shop','shop','pizzashop','alley','church'];
+
+  for(let bi=0;bi<H_ROADS.length-1;bi++){
+    for(let bj=0;bj<V_ROADS.length-1;bj++){
+      const bx0 = V_ROADS[bj]+ROAD_W+6;
+      const by0 = H_ROADS[bi]+ROAD_W+6;
+      const bx1 = V_ROADS[bj+1]-6;
+      const by1 = H_ROADS[bi+1]-6;
+      const bw = bx1-bx0, bh = by1-by0;
+      if(bw<50||bh<50) continue;
+
+      let count = rand(2,4);
+      for(let k=0;k<count;k++){
+        let attempts=0, placed=false;
+        while(attempts<15&&!placed){
+          attempts++;
+          const w=rand(50,Math.min(110,bw-10));
+          const h=rand(45,Math.min(90,bh-10));
+          const x=bx0+rand(0,bw-w);
+          const y=by0+rand(0,bh-h);
+          const nb={x,y,w,h,type:typePool[rand(0,typePool.length-1)],lit:Math.random()>0.4};
+          if(!buildings.some(eb=>buildingsOverlap(eb,nb))){
+            buildings.push(nb);
+            placed=true;
+          }
+        }
+      }
+    }
+  }
+
+  // Ensure at least 2 pizza shops and the mansion
+  // Force a pizza shop
+  buildings.push({x:500,y:380,w:80,h:60,type:'pizzashop',lit:true});
+  buildings.push({x:1900,y:730,w:80,h:60,type:'pizzashop',lit:true});
+
+  // Mansion (escape point) center
+  buildings.push({x:1330,y:1310,w:160,h:160,type:'mansion',lit:true});
+
+  // Streetlights along roads
+  for(const ry of H_ROADS){
+    for(let x=100;x<WORLD;x+=180){
+      streetlights.push({x,y:ry-10,on:Math.random()>0.25,flicker:Math.random()>0.6});
+    }
+  }
+  for(const rx of V_ROADS){
+    for(let y=100;y<WORLD;y+=180){
+      streetlights.push({x:rx-10,y,on:Math.random()>0.25,flicker:Math.random()>0.6});
+    }
+  }
+
+  // Parked cars
+  for(let i=0;i<25;i++){
+    let x,y,att=0;
+    do{ x=rand(80,WORLD-80); y=rand(80,WORLD-80); att++; }
+    while(!isOnRoad(x,y,40,20)&&att<30);
+    if(isOnRoad(x,y,40,20)){
+      worldCars.push({x,y,w:40,h:20,color:['#1a1a2e','#2d1b1b','#1b2d1b','#2d2d1b'][rand(0,3)],driven:false});
+    }
+  }
+}
+
+// ── INPUT ──────────────────────────────────────────────────────────────────
+window.addEventListener('keydown',e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.key==='e'||e.key==='E') interact();
+  if(e.key==='h'||e.key==='H') toggleHide();
+  e.preventDefault();
+});
+window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+
+// ── INTERACTIONS ───────────────────────────────────────────────────────────
+function getBuildingNear(x,y,range){
+  return buildings.find(b=>{
+    const cx=b.x+b.w/2, cy=b.y+b.h/2;
+    return Math.abs(cx-x)<b.w/2+range && Math.abs(cy-y)<b.h/2+range;
+  })||null;
+}
+function getCarNear(x,y,range){
+  return worldCars.find(c=>!c.driven&&Math.abs(c.x-x)<c.w+range&&Math.abs(c.y-y)<c.h+range)||null;
+}
+function dist(ax,ay,bx,by){ return Math.sqrt((ax-bx)**2+(ay-by)**2); }
+
+function interact(){
+  if(!gameRunning) return;
+  if(player.hidden){ player.hidden=false; setStatus("You stepped back outside."); return; }
+  if(player.inCar){ exitCar(); return; }
+
+  const car = getCarNear(player.x,player.y,30);
+  if(car){ enterCar(car); return; }
+
+  const b = getBuildingNear(player.x,player.y,35);
+  if(!b){ setStatus("Nothing nearby."); return; }
+
+  if(b.type==='pizzashop'){
+    if(currentJob){
+      setStatus("Finish your current delivery first.");
+      return;
+    }
+    // Assign delivery job — pick a house as target
+    const houses = buildings.filter(h=>h.type==='house');
+    if(houses.length===0){ setStatus("No houses to deliver to."); return; }
+    const target = houses[rand(0,houses.length-1)];
+    const reward = rand(200,500);
+    currentJob = {
+      type:'pizza',
+      phase:'deliver',
+      target,
+      reward,
+      timeLimit:1800, // frames
+      timer:0
+    };
+    setJobMsg(`🍕 Deliver pizza to the house. Reward: $${reward}`);
+    setStatus("Pizza picked up! Find the marked house.");
+    makeMakeNoise(player.x, player.y, 30); // starting car etc
+    return;
+  }
+
+  if(b.type==='mansion'){
+    if(player.money>=GOAL){
+      document.getElementById('win-screen').style.display='flex';
+      gameRunning=false;
+    } else {
+      setStatus(`Need $${GOAL.toLocaleString()} to escape. You have $${player.money.toLocaleString()}.`);
+    }
+    return;
+  }
+
+  if(b.type==='house' && currentJob && currentJob.target===b){
+    // Complete delivery
+    completeDelivery();
+    return;
+  }
+
+  setStatus("...");
+}
+
+function completeDelivery(){
+  const reward = currentJob.reward;
+  player.money += reward;
+  currentJob = null;
+  setJobMsg('');
+  setStatus(`Delivery done. Earned $${reward}. Stay quiet.`);
+  updateHUD();
+  makeMakeNoise(player.x,player.y,20);
+}
+
+function toggleHide(){
+  if(!gameRunning) return;
+  if(player.inCar) return;
+  const b = getBuildingNear(player.x,player.y,35);
+  if(b && b.type !== 'mansion'){
+    player.hidden = !player.hidden;
+    if(player.hidden){
+      setStatus("You're hiding inside. Stay still.");
+      player.noiseLevel = 0;
+    } else {
+      setStatus("You step back outside.");
+    }
+  } else {
+    setStatus("Find a building to hide in.");
+  }
+}
+
+function enterCar(car){
+  player.inCar=car; car.driven=true;
+  player.speed=6;
+  document.getElementById('vehicle-status').textContent='🚗 Driving';
+  setStatus("In car. Driving makes noise.");
+  makeMakeNoise(player.x,player.y,50);
+}
+
+function exitCar(){
+  if(player.inCar){
+    player.x=player.inCar.x+44;
+    player.y=player.inCar.y;
+    player.inCar.driven=false;
+    player.inCar=null;
+    player.speed=2.8;
+    document.getElementById('vehicle-status').textContent='On foot';
+    makeMakeNoise(player.x,player.y,25);
+  }
+}
+
+// Noise system — killer hears this
+function makeMakeNoise(x,y,radius){
+  killer.lastHeardX=x; killer.lastHeardY=y;
+  killer.awareness=Math.min(100,killer.awareness+radius*0.6);
+  if(killer.awareness>60) killer.state='hunting';
+}
+
+// ── UPDATE ──────────────────────────────────────────────────────────────────
+function update(){
+  if(!gameRunning) return;
+  frameCount++;
+
+  // Job timer
+  if(currentJob){
+    currentJob.timer++;
+    const remaining = currentJob.timeLimit - currentJob.timer;
+    if(remaining<=0){
+      currentJob=null;
+      setJobMsg('');
+      setStatus("Delivery failed — too slow. The night grows darker.");
+    } else if(remaining<300){
+      setJobMsg(`⚠️ Hurry! Deliver soon.`);
+    }
+  }
+
+  // Player movement
+  let dx=0,dy=0;
+  if(keys['a']||keys['arrowleft']) dx=-1;
+  if(keys['d']||keys['arrowright']) dx=1;
+  if(keys['w']||keys['arrowup']) dy=-1;
+  if(keys['s']||keys['arrowdown']) dy=1;
+  if(dx&&dy){dx*=0.707;dy*=0.707;}
+
+  const sprinting = keys['shift'] && !player.hidden;
+  const spd = player.hidden ? 0 : (sprinting ? player.speed*1.8 : (player.inCar ? 7 : player.speed));
+
+  if(!player.hidden){
+    if(player.inCar){
+      player.inCar.x+=dx*spd;
+      player.inCar.y+=dy*spd;
+      player.inCar.x=Math.max(0,Math.min(WORLD-player.inCar.w,player.inCar.x));
+      player.inCar.y=Math.max(0,Math.min(WORLD-player.inCar.h,player.inCar.y));
+      player.x=player.inCar.x+20;
+      player.y=player.inCar.y+10;
+    } else {
+      const nx=player.x+dx*spd, ny=player.y+dy*spd;
+      if(!solidCollide(nx,player.y,player.w,player.h)) player.x=nx;
+      if(!solidCollide(player.x,ny,player.w,player.h)) player.y=ny;
+      player.x=Math.max(0,Math.min(WORLD-player.w,player.x));
+      player.y=Math.max(0,Math.min(WORLD-player.h,player.y));
+    }
+    if(dx||dy) player.angle=Math.atan2(dy,dx);
+  }
+
+  // Noise generation
+  player.noiseLevel=0;
+  if((dx||dy)&&!player.hidden){
+    if(player.inCar) player.noiseLevel=4;
+    else if(sprinting) player.noiseLevel=3;
+    else player.noiseLevel=1;
+  }
+  if(player.noiseLevel>0 && frameCount%30===0){
+    makeMakeNoise(player.x,player.y, player.noiseLevel*15);
+  }
+
+  // Camera
+  cam.x=Math.max(0,Math.min(WORLD-canvas.width, player.x-canvas.width/2));
+  cam.y=Math.max(0,Math.min(WORLD-canvas.height, player.y-canvas.height/2));
+
+  // Killer AI
+  updateKiller();
+
+  // Sanity — decreases when killer is near
+  const killerDist = dist(player.x,player.y,killer.x,killer.y);
+  if(killerDist<300 && !player.hidden){
+    player.sanity=Math.max(0,player.sanity-0.08);
+  } else if(killerDist<600 && !player.hidden){
+    player.sanity=Math.max(0,player.sanity-0.02);
+  } else {
+    player.sanity=Math.min(100,player.sanity+0.01);
+  }
+
+  // Killer catches player
+  if(killerDist<22 && !player.hidden && !player.inCar){
+    player.health-=0.8;
+    flashBlood();
+    if(player.health<=0){
+      die("He caught you in the dark streets.");
+    }
+  }
+  // Car can run over killer but also killer attacks car
+  if(killerDist<30 && player.inCar){
+    player.health-=0.3;
+    flashBlood();
+  }
+
+  // Killer can break hiding after a while if he's right outside
+  if(player.hidden && killerDist<40){
+    player.health-=0.15;
+    flashBlood();
+    if(player.health<=0) die("He broke down the door.");
+  }
+
+  updateHUD();
+}
+
+function solidCollide(x,y,w,h){
+  for(const b of buildings){
+    if(b.type==='mansion') continue;
+    if(x<b.x+b.w && x+w>b.x && y<b.y+b.h && y+h>b.y) return true;
+  }
+  return false;
+}
+
+function updateKiller(){
+  killer.awareness=Math.max(0,killer.awareness-0.05);
+
+  if(killer.awareness>80) killer.state='chasing';
+  else if(killer.awareness>30) killer.state='hunting';
+  else killer.state='patrol';
+
+  let tx=killer.patrolTarget.x, ty=killer.patrolTarget.y;
+
+  if(killer.state==='chasing'){
+    tx=player.x; ty=player.y;
+    killer.speed=2.4;
+    killer.visible=true;
+  } else if(killer.state==='hunting' && killer.lastHeardX!=null){
+    tx=killer.lastHeardX; ty=killer.lastHeardY;
+    killer.speed=2.0;
+    killer.visible = dist(killer.x,killer.y,player.x,player.y)<350;
+  } else {
+    killer.speed=1.5;
+    killer.visible=false;
+    // New patrol target when reached
+    if(dist(killer.x,killer.y,tx,ty)<30){
+      killer.patrolTarget={x:rand(100,WORLD-100),y:rand(100,WORLD-100)};
+    }
+  }
+
+  // Move toward target, avoid buildings loosely
+  const kd = dist(killer.x,killer.y,tx,ty);
+  if(kd>5){
+    killer.x+=(tx-killer.x)/kd*killer.speed;
+    killer.y+=(ty-killer.y)/kd*killer.speed;
+  }
+  killer.x=Math.max(0,Math.min(WORLD-killer.w,killer.x));
+  killer.y=Math.max(0,Math.min(WORLD-killer.h,killer.y));
+
+  // Threat level text
+  const d=dist(player.x,player.y,killer.x,killer.y);
+  let threat='';
+  if(killer.state==='chasing') threat='⚠️ HE SEES YOU — RUN';
+  else if(killer.state==='hunting') threat='👁 He heard something...';
+  else if(d<400) threat='😰 Something is close.';
+  document.getElementById('threat-level').textContent=threat;
+}
+
+let bloodTimer=0;
+function flashBlood(){
+  document.getElementById('blood').style.background='rgba(139,0,0,0.35)';
+  bloodTimer=8;
+}
+
+function die(msg){
+  gameRunning=false;
+  document.getElementById('death-msg').textContent=msg;
+  document.getElementById('death-screen').style.display='flex';
+}
+
+// ── DRAW ────────────────────────────────────────────────────────────────────
+const BCOLORS = {
+  house:   {wall:'#1a1a1a', roof:'#111', accent:'#2a1a1a'},
+  shop:    {wall:'#1a1a2a', roof:'#111', accent:'#1a2a2a'},
+  pizzashop:{wall:'#2a1a0a',roof:'#1a0a00',accent:'#3a2a0a'},
+  alley:   {wall:'#0f0f0f', roof:'#090909', accent:'#1a1a1a'},
+  church:  {wall:'#1a1a1a', roof:'#0d0d0d', accent:'#1a1a2a'},
+  mansion: {wall:'#1a1500', roof:'#0d0d00', accent:'#2a2000'},
+};
+
+function draw(){
+  // Night sky background
+  ctx.fillStyle='#050508';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.save();
+  ctx.translate(-cam.x,-cam.y);
+
+  // Ground (dark pavement texture)
+  ctx.fillStyle='#0a0a0a';
+  ctx.fillRect(0,0,WORLD,WORLD);
+
+  // Roads
+  ctx.fillStyle='#111';
+  for(const r of H_ROADS) ctx.fillRect(0,r,WORLD,ROAD_W);
+  for(const r of V_ROADS) ctx.fillRect(r,0,ROAD_W,WORLD);
+
+  // Road center lines (faint)
+  ctx.strokeStyle='rgba(80,60,30,0.3)';
+  ctx.lineWidth=2;
+  ctx.setLineDash([25,18]);
+  for(const r of H_ROADS){ ctx.beginPath(); ctx.moveTo(0,r+ROAD_W/2); ctx.lineTo(WORLD,r+ROAD_W/2); ctx.stroke(); }
+  for(const r of V_ROADS){ ctx.beginPath(); ctx.moveTo(r+ROAD_W/2,0); ctx.lineTo(r+ROAD_W/2,WORLD); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  // Streetlights (flickering)
+  for(const sl of streetlights){
+    const flkOn = sl.flicker ? (Math.floor(frameCount/8)%7!==0) : true;
+    if(sl.on && flkOn){
+      // Light cone
+      const grad = ctx.createRadialGradient(sl.x,sl.y,2,sl.x,sl.y,90);
+      grad.addColorStop(0,'rgba(180,160,80,0.12)');
+      grad.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath(); ctx.arc(sl.x,sl.y,90,0,Math.PI*2); ctx.fill();
+      // Bulb
+      ctx.fillStyle='rgba(200,180,100,0.8)';
+      ctx.beginPath(); ctx.arc(sl.x,sl.y,3,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Buildings
+  for(const b of buildings){
+    const cfg=BCOLORS[b.type]||BCOLORS.house;
+
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    ctx.fillRect(b.x+6,b.y+6,b.w,b.h);
+
+    ctx.fillStyle=cfg.wall;
+    ctx.fillRect(b.x,b.y,b.w,b.h);
+
+    // Roof strip
+    ctx.fillStyle=cfg.roof;
+    ctx.fillRect(b.x,b.y,b.w,8);
+
+    // Windows — lit or dark
+    if(b.w>50){
+      const winColor = b.lit ? 'rgba(180,150,60,0.25)' : 'rgba(10,10,10,0.8)';
+      ctx.fillStyle=winColor;
+      ctx.fillRect(b.x+8,b.y+14,10,8);
+      if(b.w>70) ctx.fillRect(b.x+b.w-18,b.y+14,10,8);
+    }
+
+    // Labels
+    ctx.textAlign='center';
+    if(b.type==='pizzashop'){
+      ctx.fillStyle='rgba(180,100,20,0.9)';
+      ctx.font='bold 10px Share Tech Mono';
+      ctx.fillText('🍕 PIZZA',b.x+b.w/2,b.y+b.h/2+4);
+      // Glow
+      const pg=ctx.createRadialGradient(b.x+b.w/2,b.y+b.h/2,5,b.x+b.w/2,b.y+b.h/2,50);
+      pg.addColorStop(0,'rgba(180,80,0,0.08)');
+      pg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=pg;
+      ctx.fillRect(b.x-20,b.y-20,b.w+40,b.h+40);
+    }
+    if(b.type==='mansion'){
+      ctx.strokeStyle='rgba(139,120,0,0.6)';
+      ctx.lineWidth=2;
+      ctx.strokeRect(b.x-2,b.y-2,b.w+4,b.h+4);
+      ctx.fillStyle='rgba(139,120,0,0.8)';
+      ctx.font='bold 11px Creepster';
+      ctx.fillText('🏛 SAFE HOUSE',b.x+b.w/2,b.y+b.h/2);
+      ctx.font='9px Share Tech Mono';
+      ctx.fillStyle='rgba(100,90,0,0.7)';
+      ctx.fillText('$30,000',b.x+b.w/2,b.y+b.h/2+14);
+    }
+    if(b.type==='church'){
+      ctx.fillStyle='rgba(80,80,120,0.6)';
+      ctx.font='14px serif';
+      ctx.fillText('✝',b.x+b.w/2,b.y+b.h/2+5);
+    }
+
+    // Delivery target highlight
+    if(currentJob && currentJob.target===b){
+      ctx.strokeStyle=`rgba(180,80,0,${0.5+0.5*Math.sin(frameCount*0.08)})`;
+      ctx.lineWidth=2;
+      ctx.strokeRect(b.x-3,b.y-3,b.w+6,b.h+6);
+      ctx.fillStyle='rgba(180,80,0,0.9)';
+      ctx.font='bold 10px Share Tech Mono';
+      ctx.fillText('📍DELIVER HERE',b.x+b.w/2,b.y-8);
+    }
+  }
+
+  // Parked cars
+  for(const c of worldCars){
+    if(!c.driven) drawCar(c);
+  }
+
+  // Player car
+  if(player.inCar) drawCar(player.inCar);
+
+  // Killer
+  if(killer.visible || dist(killer.x+cam.x,killer.y+cam.y,player.x,player.y)<200){
+    drawKiller();
+  }
+
+  // Player
+  if(!player.hidden) drawPlayer();
+
+  // Hide indicator
+  if(player.hidden){
+    ctx.fillStyle='rgba(0,0,0,0.0)';
+    // Shown via HUD text
+  }
+
+  ctx.restore();
+
+  // Blood fade
+  if(bloodTimer>0){ bloodTimer--; if(bloodTimer===0) document.getElementById('blood').style.background='rgba(0,0,0,0)'; }
+
+  // Sanity distortion — screen shake
+  if(player.sanity<30){
+    const shake=(30-player.sanity)*0.15;
+    ctx.save();
+    ctx.translate(randF(-shake,shake),randF(-shake,shake));
+    ctx.restore();
+    document.getElementById('grain').style.opacity=0.08*(1-player.sanity/30);
+  }
+
+  drawMinimap();
+  drawCompass();
+}
+
+function drawPlayer(){
+  const px=player.x, py=player.y;
+  // Footstep shadow
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.ellipse(px,py+10,8,4,0,0,Math.PI*2); ctx.fill();
+
+  // Body — dim, barely visible at night
+  ctx.fillStyle='#3a3a4a';
+  ctx.beginPath(); ctx.arc(px,py,8,0,Math.PI*2); ctx.fill();
+  // Face glow from phone/flashlight
+  const fg=ctx.createRadialGradient(px,py,1,px,py,30);
+  fg.addColorStop(0,'rgba(100,120,180,0.15)');
+  fg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=fg;
+  ctx.beginPath(); ctx.arc(px,py,30,0,Math.PI*2); ctx.fill();
+
+  // Direction dot
+  ctx.fillStyle='rgba(100,120,180,0.8)';
+  ctx.beginPath(); ctx.arc(px+Math.cos(player.angle)*9,py+Math.sin(player.angle)*9,2,0,Math.PI*2); ctx.fill();
+
+  // Pizza box if delivering
+  if(currentJob){
+    ctx.fillStyle='rgba(180,100,20,0.9)';
+    ctx.fillRect(px-5,py-16,10,7);
+    ctx.strokeStyle='rgba(100,60,0,0.8)';
+    ctx.lineWidth=1;
+    ctx.strokeRect(px-5,py-16,10,7);
+  }
+}
+
+function drawKiller(){
+  const kx=killer.x, ky=killer.y;
+  // Red aura
+  const rg=ctx.createRadialGradient(kx,ky,2,kx,ky,60);
+  rg.addColorStop(0,'rgba(139,0,0,0.2)');
+  rg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=rg;
+  ctx.beginPath(); ctx.arc(kx,ky,60,0,Math.PI*2); ctx.fill();
+
+  // Body — dark figure
+  ctx.fillStyle='#1a0000';
+  ctx.beginPath(); ctx.arc(kx,ky,10,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#8b0000';
+  ctx.beginPath(); ctx.arc(kx,ky,5,0,Math.PI*2); ctx.fill();
+
+  // Eyes
+  ctx.fillStyle='rgba(200,0,0,0.9)';
+  ctx.beginPath(); ctx.arc(kx-3,ky-2,2,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(kx+3,ky-2,2,0,Math.PI*2); ctx.fill();
+
+  if(killer.state==='chasing'){
+    ctx.strokeStyle='rgba(139,0,0,0.6)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let i=0;i<8;i++){
+      const a=frameCount*0.1+i*Math.PI/4;
+      ctx.moveTo(kx+Math.cos(a)*12,ky+Math.sin(a)*12);
+      ctx.lineTo(kx+Math.cos(a)*18,ky+Math.sin(a)*18);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawCar(c){
+  ctx.fillStyle=c.color;
+  ctx.fillRect(c.x,c.y,c.w,c.h);
+  ctx.fillStyle='rgba(30,30,50,0.7)';
+  ctx.fillRect(c.x+4,c.y+2,c.w-8,c.h/2-2);
+  // headlights if driven
+  if(c.driven){
+    ctx.fillStyle='rgba(200,200,150,0.4)';
+    ctx.beginPath(); ctx.arc(c.x+c.w,c.y+5,15,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(c.x+c.w,c.y+c.h-5,15,0,Math.PI*2); ctx.fill();
+  }
+  // Wheels
+  ctx.fillStyle='#0a0a0a';
+  [[0,0],[c.w-6,0],[0,c.h-6],[c.w-6,c.h-6]].forEach(([wx,wy])=>{
+    ctx.fillRect(c.x+wx,c.y+wy,6,6);
+  });
+}
+
+function drawMinimap(){
+  const mw=120,mh=120,mx=canvas.width-mw-10,my=10;
+  const sc=mw/WORLD;
+  ctx.fillStyle='rgba(0,0,0,0.8)';
+  ctx.fillRect(mx,my,mw,mh);
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1; ctx.strokeRect(mx,my,mw,mh);
+
+  // Roads
+  ctx.fillStyle='#1a1a1a';
+  for(const r of H_ROADS) ctx.fillRect(mx,my+r*sc,mw,ROAD_W*sc);
+  for(const r of V_ROADS) ctx.fillRect(mx+r*sc,my,ROAD_W*sc,mh);
+
+  // Mansion
+  const man=buildings.find(b=>b.type==='mansion');
+  if(man){ ctx.fillStyle='#3a3000'; ctx.fillRect(mx+man.x*sc,my+man.y*sc,man.w*sc+2,man.h*sc+2); }
+
+  // Delivery target
+  if(currentJob){
+    const t=currentJob.target;
+    ctx.fillStyle=`rgba(180,80,0,${0.5+0.5*Math.sin(frameCount*0.1)})`;
+    ctx.fillRect(mx+t.x*sc-2,my+t.y*sc-2,5,5);
+  }
+
+  // Killer
+  ctx.fillStyle= killer.state==='chasing'?'#8b0000':'#3a0000';
+  ctx.beginPath(); ctx.arc(mx+killer.x*sc,my+killer.y*sc,3,0,Math.PI*2); ctx.fill();
+
+  // Player
+  ctx.fillStyle='#4060aa';
+  ctx.beginPath(); ctx.arc(mx+player.x*sc,my+player.y*sc,3,0,Math.PI*2); ctx.fill();
+
+  ctx.fillStyle='#333'; ctx.font='8px Share Tech Mono'; ctx.textAlign='left';
+  ctx.fillText('■=SAFE HOUSE',mx+2,my+mh-3);
+}
+
+function drawCompass(){
+  if(!currentJob) return;
+  // Arrow pointing to delivery target
+  const t=currentJob.target;
+  const tx=t.x+t.w/2-cam.x, ty=t.y+t.h/2-cam.y;
+  const cx=canvas.width/2, cy=canvas.height/2;
+  const angle=Math.atan2(ty-cy,tx-cx);
+  const d2=dist(player.x,player.y,t.x+t.w/2,t.y+t.h/2);
+
+  ctx.save();
+  ctx.translate(cx,cy-80);
+  ctx.rotate(angle);
+  ctx.fillStyle=`rgba(180,80,0,${0.6+0.4*Math.sin(frameCount*0.1)})`;
+  ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(6,6); ctx.lineTo(-6,6); ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle='rgba(180,80,0,0.7)';
+  ctx.font='10px Share Tech Mono';
+  ctx.textAlign='center';
+  ctx.fillText(Math.round(d2)+'m',cx,cy-90);
+}
+
+// ── HUD ─────────────────────────────────────────────────────────────────────
+function setStatus(msg){ document.getElementById('status-msg').textContent=msg; }
+function setJobMsg(msg){ document.getElementById('job-msg').textContent=msg; }
+function updateHUD(){
+  document.getElementById('money-val').textContent='$'+player.money.toLocaleString();
+  document.getElementById('health-bar').style.width=Math.max(0,player.health)+'%';
+  document.getElementById('sanity-bar').style.width=Math.max(0,player.sanity)+'%';
+  document.getElementById('sanity-bar').style.background=player.sanity>50?'#4b0082':player.sanity>25?'#8b0000':'#cc0000';
+}
+
+// ── START ────────────────────────────────────────────────────────────────────
+function startGame(){
+  document.getElementById('title-screen').style.display='none';
+  genWorld();
+  gameRunning=true;
+  loop();
+}
+
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize',()=>{ canvas.width=window.innerWidth; canvas.height=window.innerHeight; });
+</script>
+</body>
+</html>
